@@ -1,0 +1,37 @@
+PseudoGit
+
+Usuario passa as informações de:
+"Método" | "Nome do Projeto" | "Seu ID" | "Projeto" 
+
+Exemplo:
+criar | projeto1 | 1 | Sou eu
+
+Metodos:
+Criar, Atualizar, verificar versões, Recuperar Versão
+
+Exemplos de cada metodo:
+Criar | Corrida de carros | 15 | 10 carros disputando em alta velocidade para cruzar a linha de chegada primeiro
+Atualizar | Fazenda | 1 | Local para plantar vegetais ou frutas e criar animais
+Verificar versoes | Bicicleta
+Recuperar Versao | ideia | 2
+ 
+Retornos:
+Projeto Corrida de carros criado com sucesso
+O usuario 1 atualizou Fazenda 
+Versoes de Bicicleta:[(v1, "duas rodas"),(v2, "duas rodas, banco e guidão"),(v2, "duas rodas simetricas, banco e guidão")]
+Versão 2 de Ideia: "Carros voadores, movidos a hélio"
+
+Padrões:
+Principal 
+Versioned Value: HashMap que armazena todas as versões dos "projetos" enviados para o servidor
+Subs:
+Write-Ahead Log: log que salva as requisições que foram feitas ao servidor, caso um servior caia deve repassar os comandos após 
+o ultimo que foi realizado pelo serve
+Leader and Followers: Um servidor lider que vai receber as resquisições e repassar para os outros servers(WAL estará ligado a ele)
+High-Water Mark: os logs devem ser replicados para os seguidores do lider também
+
+Componentes:
+ApiGateway
+ServidorLider
+ServidorSeguidor
+Banco(HashMap)

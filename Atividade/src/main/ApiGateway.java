@@ -41,7 +41,7 @@ public class ApiGateway {
             return;
         }
 
-        System.out.println("Recebido de " + sender + ": " + message);
+        //System.out.println("Recebido de " + sender + ": " + message);
 
         if (message.startsWith("DB")) {
             DBAddress = sender;
@@ -70,17 +70,24 @@ public class ApiGateway {
                 InetSocketAddress server = connectedServers.keySet().iterator().next(); // Pega o primeiro servidor
 
                 // Envia a mensagem para o servidor
-                sendMessage(socket, message, server);
+                if(!message.startsWith("respostaServer|")) {
+                	
+                	sendMessage(socket, message, server);
 
-                // Aguarda a resposta do servidor
-                byte[] buf = new byte[1024];
-                DatagramPacket respostaPacote = new DatagramPacket(buf, buf.length);
-                socket.receive(respostaPacote);
+                	// Aguarda a resposta do servidor
+                	byte[] buf = new byte[1024];
+                	DatagramPacket respostaPacote = new DatagramPacket(buf, buf.length);
+                	socket.receive(respostaPacote);
 
-                String resposta = new String(respostaPacote.getData(), 0, respostaPacote.getLength());
+                	String resposta = new String(respostaPacote.getData(), 0, respostaPacote.getLength());
+                	/*if (resposta.startsWith("respostaServer|")) {
+                        resposta = resposta.substring("respostaServer|".length());
+                    }*/
+                	//System.out.println("Respondendo de " + sender + ": " + resposta);
 
-                // Repassa a resposta de volta ao remetente original
-                sendMessage(socket, resposta, sender);
+                	// Repassa a resposta de volta ao remetente original
+                	sendMessage(socket, resposta, sender);
+                }
             }
         }
     }

@@ -30,7 +30,7 @@ public class ProjetoDatabase {
             String msg = new String(recebido.getData(), 0, recebido.getLength());
             InetSocketAddress remetente = new InetSocketAddress(recebido.getAddress(), recebido.getPort());
 
-            System.out.println("[DB] Mensagem recebida: " + msg);
+            
             
             if (msg.equals("PING")) {
                 byte[] resposta = "PONG".getBytes();
@@ -38,6 +38,8 @@ public class ProjetoDatabase {
                         remetente.getAddress(), remetente.getPort());
                 socket.send(pongPacket);
                 continue;
+            } else {
+            	//System.out.println("[DB] Mensagem recebida: " + msg);
             }
 
 
@@ -50,17 +52,27 @@ public class ProjetoDatabase {
                 case "criar":
                     if (!banco.containsKey(nome)) {
                         banco.put(nome, new ArrayList<>());
+                        banco.get(nome).add(partes[2].trim());
+                        resposta = "Projeto " + nome + " criado com sucesso";
+                    } else {
+                    	resposta = "Projeto " + nome + " já existe";
                     }
-                    banco.get(nome).add(partes[2].trim());
-                    resposta = "Projeto " + nome + " criado com sucesso";
                     break;
 
                 case "atualizar":
                     if (!banco.containsKey(nome)) {
                         banco.put(nome, new ArrayList<>());
                     }
-                    banco.get(nome).add(partes[2].trim());
-                    resposta = "O usuario 1 atualizou " + nome;
+
+                    String novaVersao = partes[2].trim();
+                    List<String> versoesExistentes = banco.get(nome);
+
+                    if (versoesExistentes.contains(novaVersao)) {
+                        resposta = "Atualizacao ignorada. A descricao ja existe em uma versao anterior de " + nome;
+                    } else {
+                        versoesExistentes.add(novaVersao);
+                        resposta = "O usuario 1 atualizou " + nome;
+                    }
                     break;
 
                 case "verificar versoes":
@@ -70,7 +82,7 @@ public class ProjetoDatabase {
                         List<String> versoes = banco.get(nome);
                         StringBuilder sb = new StringBuilder("Versoes de " + nome + ":[");
                         for (int i = 0; i < versoes.size(); i++) {
-                            sb.append("(v").append(i + 1).append(", \"").append(versoes.get(i)).append("\")");
+                            sb.append("v").append(i + 1);
                             if (i < versoes.size() - 1) sb.append(",");
                         }
                         sb.append("]");
@@ -103,7 +115,7 @@ public class ProjetoDatabase {
             }
 
             // Enviar resposta para quem enviou o comando
-            byte[] respostaBytes = ("resposta|" + resposta).getBytes();
+            byte[] respostaBytes = ("respostaDB|" + resposta).getBytes();
             DatagramPacket respostaPacote = new DatagramPacket(respostaBytes, respostaBytes.length,
                     remetente.getAddress(), remetente.getPort());
             socket.send(respostaPacote);

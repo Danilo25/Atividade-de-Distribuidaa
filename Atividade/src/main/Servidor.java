@@ -3,6 +3,7 @@ package main;
 import java.io.IOException;
 import java.net.*;
 import java.util.concurrent.*;
+import java.util.*;
 
 public class Servidor {
 
@@ -10,61 +11,102 @@ public class Servidor {
     private static InetSocketAddress DBAddress = null;
 
     private final int port;
+    private final BlockingQueue<MessageTask> pingQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<MessageTask> messageQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<String> dbResponses = new LinkedBlockingQueue<>();
+    private final List<String> pseudoWAL = new ArrayList<>();
 
     public Servidor(int port) {
         this.port = port;
     }
 
     public void start() {
-        try (DatagramSocket socket = new DatagramSocket(port)) {
+        try {
+            DatagramSocket socket = new DatagramSocket(port);
             System.out.println("Servidor iniciado na porta " + port);
 
-            // Envia mensagem para ApiGateway
+            // Envia SERVER ao ApiGateway para se registrar
             sendMessage(socket, "SERVER", apiAddress);
 
-            byte[] buffer = new byte[1024];
-
-            while (true) {
-                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                socket.receive(packet);
-
-                String received = new String(packet.getData(), 0, packet.getLength()).trim();
-                InetSocketAddress sender = new InetSocketAddress(packet.getAddress(), packet.getPort());
-                System.out.println("Recebido do ApiGateway: " + received);
-                
-                if (received.equals("PING")) {
-                    sendMessage(socket, "PONG", sender);
-                    continue; 
-                }
-
-                if (received.startsWith("DB_PORT:")) {
-                    int DBPort = Integer.parseInt(received.split(":")[1]);
-                    DBAddress = new InetSocketAddress("localhost", DBPort);
-                    System.out.println("Porta da DB recebida: " + DBPort);
-
-                } else {
-                    if (DBAddress != null) {
-                        sendMessage(socket, received, DBAddress); // Repassa o comando original para o DB
-                        System.out.println("Comando enviado para DB: " + received);
-
-                        // Espera resposta do DB
-                        byte[] buf = new byte[1024];
-                        DatagramPacket respostaPacote = new DatagramPacket(buf, buf.length);
-                        socket.receive(respostaPacote);
-
-                        String resposta = new String(respostaPacote.getData(), 0, respostaPacote.getLength());
-                        System.out.println("Resposta recebida do DB: " + resposta);
-
-                        // Envia resposta ao ApiGateway (ele se encarrega de repassar ao cliente)
-                        sendMessage(socket, resposta, apiAddress);
-                    } else {
-                        System.out.println("DB ainda não definida. Ignorando comando.");
-                    }
-                }
-            }
+            // Inicia threads
+            new Thread(() -> listen(socket)).start();
+            new Thread(() -> handlePings(socket)).start();
+            new Thread(() -> handleMessages(socket)).start();
 
         } catch (IOException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void listen(DatagramSocket socket) {
+        byte[] buffer = new byte[1024];
+
+        while (true) {
+            try {
+                DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                socket.receive(packet);
+
+                String message = new String(packet.getData(), 0, packet.getLength()).trim();
+                InetSocketAddress sender = new InetSocketAddress(packet.getAddress(), packet.getPort());
+
+                if (message.equals("PING")) {
+                    pingQueue.offer(new MessageTask(message, sender));
+                } else if (message.startsWith("respostaDB|")) {
+                    dbResponses.offer(message.substring("respostaDB|".length()));
+                } else {
+                    messageQueue.offer(new MessageTask(message, sender));
+                }
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void handlePings(DatagramSocket socket) {
+        while (true) {
+            try {
+                MessageTask task = pingQueue.take();
+                System.out.println("Respondendo o PONG");
+                sendMessage(socket, "PONG", task.sender);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private void handleMessages(DatagramSocket socket) {
+        while (true) {
+            try {
+                MessageTask task = messageQueue.take();
+                String message = task.message;
+
+                if (message.startsWith("DB_PORT:")) {
+                    int DBPort = Integer.parseInt(message.split(":")[1]);
+                    DBAddress = new InetSocketAddress("localhost", DBPort);
+                    System.out.println("Porta da DB recebida: " + DBPort);
+
+                } else if (DBAddress != null) {
+                    pseudoWAL.add(message);
+                    sendMessage(socket, message, DBAddress);
+                    System.out.println("Comando enviado para DB: " + message);
+
+                    // Aguarda resposta da DB (com timeout para evitar travar pra sempre)
+                    String resposta = dbResponses.poll(3, TimeUnit.SECONDS);
+                    if (resposta != null) {
+                        System.out.println("Resposta da DB: " + resposta);
+                        sendMessage(socket, "respostaServer|" + resposta, apiAddress);
+                    } else {
+                        System.out.println("DB não respondeu a tempo para comando: " + message);
+                    }
+
+                } else {
+                    System.out.println("DB ainda não definida. Ignorando: " + message);
+                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -81,7 +123,16 @@ public class Servidor {
         }
 
         int port = Integer.parseInt(args[0]);
-        Servidor servidor = new Servidor(port);
-        servidor.start();
+        new Servidor(port).start();
+    }
+
+    private static class MessageTask {
+        String message;
+        InetSocketAddress sender;
+
+        MessageTask(String message, InetSocketAddress sender) {
+            this.message = message;
+            this.sender = sender;
+        }
     }
 }

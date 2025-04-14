@@ -30,7 +30,7 @@ public class ProjetoDatabase {
             String msg = new String(recebido.getData(), 0, recebido.getLength());
             InetSocketAddress remetente = new InetSocketAddress(recebido.getAddress(), recebido.getPort());
 
-            System.out.println("[DB] Mensagem recebida: " + msg);
+            
             
             if (msg.equals("PING")) {
                 byte[] resposta = "PONG".getBytes();
@@ -38,72 +38,90 @@ public class ProjetoDatabase {
                         remetente.getAddress(), remetente.getPort());
                 socket.send(pongPacket);
                 continue;
+            }else {
+            	//System.out.println("[DB] Mensagem recebida: " + msg);
             }
 
 
             String[] partes = msg.split("\\|");
-            String comando = partes[0].trim().toLowerCase();
-            String nome = partes.length > 1 ? partes[1].trim() : "";
+            String reqId = partes[0].trim();  // Novo: ID da requisição
+            String comando = partes[1].trim().toLowerCase();
+            String nome = partes.length > 2 ? partes[2].trim() : "";
             String resposta = "";
 
             switch (comando) {
-                case "criar":
-                    if (!banco.containsKey(nome)) {
-                        banco.put(nome, new ArrayList<>());
-                    }
-                    banco.get(nome).add(partes[2].trim());
+            case "criar":
+                if (banco.containsKey(nome)) {
+                    resposta = "Projeto " + nome + " ja existe";
+                } else {
+                    banco.put(nome, new ArrayList<>());
+                    banco.get(nome).add(partes[3].trim());
                     resposta = "Projeto " + nome + " criado com sucesso";
-                    break;
+                }
+                break;
 
-                case "atualizar":
-                    if (!banco.containsKey(nome)) {
-                        banco.put(nome, new ArrayList<>());
-                    }
-                    banco.get(nome).add(partes[2].trim());
-                    resposta = "O usuario 1 atualizou " + nome;
-                    break;
-
-                case "verificar versoes":
-                    if (!banco.containsKey(nome)) {
-                        resposta = "Nenhuma versão encontrada para " + nome;
+            case "atualizar":
+                if (!banco.containsKey(nome)) {
+                    resposta = "Projeto " + nome + " nao encontrado";
+                } else {
+                    String descricao = partes[3].trim();
+                    List<String> versoes = banco.get(nome);
+                    int index = versoes.indexOf(descricao);
+                    if (index != -1) {
+                        resposta = "Descricao ja existe na versao v" + (index + 1) + " de " + nome;
                     } else {
-                        List<String> versoes = banco.get(nome);
-                        StringBuilder sb = new StringBuilder("Versoes de " + nome + ":[");
-                        for (int i = 0; i < versoes.size(); i++) {
-                            sb.append("(v").append(i + 1).append(", \"").append(versoes.get(i)).append("\")");
-                            if (i < versoes.size() - 1) sb.append(",");
-                        }
-                        sb.append("]");
-                        resposta = sb.toString();
+                        versoes.add(descricao);
+                        resposta = "O usuario 1 atualizou " + nome;
                     }
-                    break;
+                }
+                break;
 
-                case "recuperar versao":
-                    if (!banco.containsKey(nome)) {
-                        resposta = "Nenhuma versão encontrada para " + nome;
-                    } else {
-                        List<String> versoes = banco.get(nome);
-                        if (partes.length == 3) {
-                            int v = Integer.parseInt(partes[2].trim());
+            case "verificar versoes":
+                if (!banco.containsKey(nome)) {
+                    resposta = "Nenhuma versao encontrada para " + nome;
+                } else {
+                    List<String> versoes = banco.get(nome);
+                    StringBuilder sb = new StringBuilder("Versoes de " + nome + ":[");
+                    for (int i = 0; i < versoes.size(); i++) {
+                        sb.append("v").append(i + 1);
+                        if (i < versoes.size() - 1) sb.append(",");
+                    }
+                    sb.append("]");
+                    resposta = sb.toString();
+                }
+                break;
+
+            case "recuperar versao":
+                if (!banco.containsKey(nome)) {
+                    resposta = "Nenhuma versao encontrada para " + nome;
+                } else {
+                    List<String> versoes = banco.get(nome);
+                    if (partes.length == 4) {
+                        try {
+                            int v = Integer.parseInt(partes[3].trim());
                             if (v >= 1 && v <= versoes.size()) {
-                                resposta = "Versão " + v + " de " + nome + ": \"" + versoes.get(v - 1) + "\"";
+                                resposta = "Versao " + v + " de " + nome + ": \"" + versoes.get(v - 1) + "\"";
                             } else {
-                                resposta = "Versão " + v + " não encontrada para " + nome;
+                                resposta = "Versao " + v + " nao encontrada para " + nome;
                             }
-                        } else {
-                            int v = versoes.size();
-                            resposta = "Versão " + v + " de " + nome + ": \"" + versoes.get(v - 1) + "\"";
+                        } catch (NumberFormatException e) {
+                            resposta = "Formato de versao invalido para " + nome;
                         }
+                    } else {
+                        int v = versoes.size();
+                        resposta = "Versao " + v + " de " + nome + ": \"" + versoes.get(v - 1) + "\"";
                     }
-                    break;
+                }
+                break;
 
-                default:
-                    resposta = "Comando desconhecido: " + comando;
-                    break;
-            }
+            default:
+                resposta = "Comando desconhecido: " + comando;
+                break;
+        }
 
             // Enviar resposta para quem enviou o comando
-            byte[] respostaBytes = ("resposta|" + resposta).getBytes();
+            String respostaFinal = "RespostaBD " + reqId + " " + resposta;
+            byte[] respostaBytes = respostaFinal.getBytes();
             DatagramPacket respostaPacote = new DatagramPacket(respostaBytes, respostaBytes.length,
                     remetente.getAddress(), remetente.getPort());
             socket.send(respostaPacote);
